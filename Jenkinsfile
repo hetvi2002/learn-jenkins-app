@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        NETLIFY_SITE_ID = 'YOUR NETLIFY SITE ID'
+        NETLIFY_SITE_ID = '2ad15294-1f7e-4ae2-b3c9-1d36acbc1a4c'
         NETLIFY_AUTH_TOKEN = credentials('netlify-token')
     }
 
@@ -30,7 +30,7 @@ pipeline {
         stage('Tests') {
             parallel {
                 stage('Unit tests') {
-                    agent {
+                    agent { 
                         docker {
                             image 'node:18-alpine'
                             reuseNode true
