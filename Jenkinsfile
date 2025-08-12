@@ -5,6 +5,7 @@ pipeline {
         NETLIFY_SITE_ID = '2ad15294-1f7e-4ae2-b3c9-1d36acbc1a4c'
         NETLIFY_AUTH_TOKEN = credentials('netlify-token')
     }
+
     stages {
         stage('Building project') {
             agent {
@@ -21,8 +22,12 @@ pipeline {
                     npm ci 
                     npm run build
                 '''
+                // Save build artifacts for later stages
+                stash(name: 'build-artifacts', includes: 'build/**')
+                stash(name: 'node-modules', includes: 'node_modules/**')
             }
         }
+
         stage('Parallel') {
             parallel {
                 stage('Test') {
@@ -33,6 +38,8 @@ pipeline {
                         }
                     }
                     steps {
+                        unstash 'build-artifacts'
+                        unstash 'node-modules'
                         sh '''
                             echo 'Test stage'
                             test -f 'build/index.html'
@@ -45,6 +52,7 @@ pipeline {
                         }
                     }
                 }
+
                 stage('E2E Test') {
                     agent {
                         docker {
@@ -52,8 +60,8 @@ pipeline {
                             reuseNode true
                         }
                     }
-                
                     steps {
+                        unstash 'build-artifacts'
                         sh '''
                             npm install serve
                             node_modules/.bin/serve -s build &
@@ -63,12 +71,21 @@ pipeline {
                     }
                     post {
                         always {
-                            publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, icon: '', keepAll: false, reportDir: 'playwright-report', reportFiles: 'index.html', reportName: 'Local Report', reportTitles: '', useWrapperFileDirectly: true])
+                            publishHTML([
+                                allowMissing: false,
+                                alwaysLinkToLastBuild: false,
+                                keepAll: false,
+                                reportDir: 'playwright-report',
+                                reportFiles: 'index.html',
+                                reportName: 'Local Report',
+                                useWrapperFileDirectly: true
+                            ])
                         }
                     }
                 }
             }
         }
+
         stage('Deploy') {
             agent {
                 docker {
@@ -77,8 +94,8 @@ pipeline {
                 }
             }
             steps {
+                unstash 'build-artifacts'
                 sh '''
-                    npm ci
                     npm install netlify-cli
                     node_modules/.bin/netlify --version
                     echo "Deploying to production site id $NETLIFY_SITE_ID"
@@ -87,26 +104,35 @@ pipeline {
                 '''
             }
         }
+
         stage('E2E Production Test') {
-                    agent {
-                        docker {
-                            image 'mcr.microsoft.com/playwright:v1.39.0-jammy'
-                            reuseNode true
-                        }
-                    }
-                    environment {
-                        CI_ENVIRONMENT_URL = 'https://curious-tiramisu-d98a1f.netlify.app'
-                    }
-                    steps {
-                        sh '''
-                            npx playwright test --reporter=html
-                        '''
-                    }
-                    post {
-                        always {
-                            publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, icon: '', keepAll: false, reportDir: 'playwright-report', reportFiles: 'index.html', reportName: 'Prod Report', reportTitles: '', useWrapperFileDirectly: true])
-                        }
-                    }
+            agent {
+                docker {
+                    image 'mcr.microsoft.com/playwright:v1.39.0-jammy'
+                    reuseNode true
                 }
+            }
+            environment {
+                CI_ENVIRONMENT_URL = 'https://curious-tiramisu-d98a1f.netlify.app'
+            }
+            steps {
+                sh '''
+                    npx playwright test --reporter=html
+                '''
+            }
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: false,
+                        keepAll: false,
+                        reportDir: 'playwright-report',
+                        reportFiles: 'index.html',
+                        reportName: 'Prod Report',
+                        useWrapperFileDirectly: true
+                    ])
+                }
+            }
+        }
     }
 }
